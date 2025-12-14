@@ -38,6 +38,7 @@ Options (mutually exclusive installers):
 
 Other options:
     -d, --dry-run                 Print the docker build command and selected extensions, do not execute.
+    --fail-on-generate            Exit with error if auto-generation of all-extensions.raw fails
     -h, --help                Show this help and exit
 
 Examples:
@@ -64,6 +65,8 @@ while [[ $# -gt 0 ]]; do
             EXCLUDE_LIST="${1#*=}"; shift;;
         -d|--dry-run)
             DRY_RUN=1; shift;;
+        --fail-on-generate)
+            FAIL_ON_GENERATE=1; shift;;
         -h|--help)
             usage;;
         *)
@@ -125,9 +128,17 @@ if [ ! -f "$RAW_FILE" ]; then
             echo "Generated $RAW_FILE"
         else
             echo "Warning: raw file $RAW_FILE still missing after generation attempt; no extensions will be selected by list" >&2
+            if [ -n "${FAIL_ON_GENERATE:-}" ]; then
+                echo "Error: generation failed and --fail-on-generate specified" >&2
+                exit 2
+            fi
         fi
     else
-        echo "Warning: raw file $RAW_FILE not found and no generator present; no extensions will be selected by list" >&2
+            echo "Warning: raw file $RAW_FILE not found and no generator present; no extensions will be selected by list" >&2
+            if [ -n "${FAIL_ON_GENERATE:-}" ]; then
+                echo "Error: no generator present and --fail-on-generate specified" >&2
+                exit 2
+            fi
     fi
 fi
 
@@ -216,12 +227,8 @@ if [[ ! " ${AVAILABLE_OS[*]} " =~ " $OS " ]]; then
     exit 1
 fi
 
-# Build image tag (omit mode if empty)
-if [ -n "${MODE:-}" ]; then
-    IMAGE_TAG="xdev:php-${PHP_VERSION}-${MODE}-${OS}"
-else
-    IMAGE_TAG="xdev:php-${PHP_VERSION}-${OS}"
-fi
+# Build image tag using PHP_TAG
+IMAGE_TAG="xdev:php-${PHP_TAG}"
 echo "Building Docker image: $IMAGE_TAG"
 
 DOCKER_CMD="docker"
@@ -234,10 +241,14 @@ if ! docker info >/dev/null 2>&1; then
     fi
 fi
 
-BUILD_CMD="$DOCKER_CMD build --build-arg PHP_VERSION=$PHP_VERSION --build-arg OS=$OS"
+# Compute PHP_TAG to handle optional MODE (e.g. "8.4-fpm-bullseye" or "8.4-bullseye")
 if [ -n "${MODE:-}" ]; then
-    BUILD_CMD="$BUILD_CMD --build-arg PHP_MODE=$MODE"
+    PHP_TAG="${PHP_VERSION}-${MODE}-${OS}"
+else
+    PHP_TAG="${PHP_VERSION}-${OS}"
 fi
+
+BUILD_CMD="$DOCKER_CMD build --build-arg PHP_TAG=$PHP_TAG"
 if [ -n "$SELECT_EXTENSIONS" ]; then
     BUILD_CMD="$BUILD_CMD --build-arg SELECT_EXTENSIONS=\"$SELECT_EXTENSIONS\""
 fi
