@@ -1,7 +1,7 @@
 ARG PHP_TAG=8.4-fpm-bookworm
 
 # Builder stage: compile/install extensions with build deps
-FROM php:${PHP_TAG} as builder
+FROM php:${PHP_TAG} AS builder
 
 
 COPY --from=ghcr.io/mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/

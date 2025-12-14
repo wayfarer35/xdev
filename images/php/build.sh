@@ -227,6 +227,13 @@ if [[ ! " ${AVAILABLE_OS[*]} " =~ " $OS " ]]; then
     exit 1
 fi
 
+# Compute PHP_TAG to handle optional MODE (e.g. "8.4-fpm-bullseye" or "8.4-bullseye")
+if [ -n "${MODE:-}" ]; then
+    PHP_TAG="${PHP_VERSION}-${MODE}-${OS}"
+else
+    PHP_TAG="${PHP_VERSION}-${OS}"
+fi
+
 # Build image tag using PHP_TAG
 IMAGE_TAG="xdev:php-${PHP_TAG}"
 echo "Building Docker image: $IMAGE_TAG"
@@ -248,7 +255,7 @@ else
     PHP_TAG="${PHP_VERSION}-${OS}"
 fi
 
-BUILD_CMD="$DOCKER_CMD build --build-arg PHP_TAG=$PHP_TAG"
+BUILD_CMD="$DOCKER_CMD build --build-arg PHP_TAG=\"$PHP_TAG\""
 if [ -n "$SELECT_EXTENSIONS" ]; then
     BUILD_CMD="$BUILD_CMD --build-arg SELECT_EXTENSIONS=\"$SELECT_EXTENSIONS\""
 fi
