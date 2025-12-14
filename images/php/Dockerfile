@@ -9,12 +9,13 @@ COPY --from=ghcr.io/mlocati/php-extension-installer /usr/bin/install-php-extensi
 ARG SELECT_EXTENSIONS=""
 
 # Prepare build deps and install extensions in single RUN to avoid leftover layers
-RUN set -e; \
+RUN set -eux; \
     if [ -n "$SELECT_EXTENSIONS" ]; then \
     SEL=$(echo "$SELECT_EXTENSIONS" | tr ',' ' '); \
     echo "[builder] Installing extensions: $SEL"; \
-    # Let install-php-extensions handle required system packages when possible \
-    install-php-extensions $SEL || true; \
+    # Let install-php-extensions handle required system packages when possible
+    # Fail the build if extension installation fails
+    install-php-extensions $SEL; \
     else \
         echo "[builder] No SELECT_EXTENSIONS provided; skipping extension build"; \
     fi; \
