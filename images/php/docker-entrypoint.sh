@@ -86,9 +86,17 @@ else
   esac
 fi
 
-# If the first arg looks like php-fpm or php, exec it; otherwise execute whatever the user passed
+# If no args provided, try php-fpm then php; otherwise execute whatever the user passed
 if [ "$#" -eq 0 ]; then
-  exec php-fpm
+  if command -v php-fpm >/dev/null 2>&1; then
+    exec php-fpm
+  elif command -v php >/dev/null 2>&1; then
+    # fall back to php CLI
+    exec php -a
+  else
+    echo "Error: neither php-fpm nor php found in PATH" >&2
+    exit 127
+  fi
 else
   exec "$@"
 fi
