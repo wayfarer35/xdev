@@ -8,10 +8,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # All files live in this directory now
-SUPPORTED_LOCAL="${SCRIPT_DIR}/supported-extensions.raw"
-SPECIAL_LOCAL="${SCRIPT_DIR}/special-requirements.raw"
+SUPPORTED_LOCAL="${SCRIPT_DIR}/extensions/supported-extensions.raw"
+SPECIAL_LOCAL="${SCRIPT_DIR}/extensions/special-requirements.raw"
 # write to filename expected by build.sh
-OUT_FILE="${SCRIPT_DIR}/all-extensions.raw"
+OUT_FILE="${SCRIPT_DIR}/extensions/all-extensions.raw"
 
 SUPPORTED_URL="https://raw.githubusercontent.com/mlocati/docker-php-extension-installer/master/data/supported-extensions"
 SPECIAL_URL="https://raw.githubusercontent.com/mlocati/docker-php-extension-installer/master/data/special-requirements"

@@ -103,12 +103,13 @@ fi
 
 
 # Read single merged raw file and compute extensions for this PHP_VERSION + OS
-EXT_DIR="$(dirname "$0")/extensions"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+EXT_DIR="$SCRIPT_DIR/extensions"
 RAW_FILE="$EXT_DIR/all-extensions.raw"
 
 # Ensure RAW_FILE exists: if missing, try to run the bundled generator script
 if [ ! -f "$RAW_FILE" ]; then
-    GENERATOR="$EXT_DIR/generate-extension-raw.sh"
+    GENERATOR="$SCRIPT_DIR/generate-extension-raw.sh"
     if [ -f "$GENERATOR" ]; then
         echo "all-extensions.raw not found; attempting to generate using $GENERATOR"
         if [ -x "$GENERATOR" ]; then
