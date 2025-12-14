@@ -11,9 +11,9 @@ ARG SELECT_EXTENSIONS=""
 # Prepare build deps and install extensions in single RUN to avoid leftover layers
 RUN set -e; \
     if [ -n "$SELECT_EXTENSIONS" ]; then \
-        SEL=$(echo "$SELECT_EXTENSIONS" | tr ',' ' '); \
-        echo "[builder] Installing extensions: $SEL"; \
-    # Let install-php-extensions handle required system packages when possible
+    SEL=$(echo "$SELECT_EXTENSIONS" | tr ',' ' '); \
+    echo "[builder] Installing extensions: $SEL"; \
+    # Let install-php-extensions handle required system packages when possible \
     install-php-extensions $SEL || true; \
     else \
         echo "[builder] No SELECT_EXTENSIONS provided; skipping extension build"; \
