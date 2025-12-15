@@ -218,6 +218,42 @@ if [ -z "${SELECT_EXTENSIONS:-}" ] && [ -f "$RAW_FILE" ]; then
     SELECT_EXTENSIONS=$(printf "%s\n" "${want[@]}" | awk '!seen[$0]++{print}' | tr '\n' ' ' | sed -e 's/^ \+//' -e 's/ \+$//')
 fi
 
+# Vlidate conflicts and remove conflicting extensions from SELECT_EXTENSIONS
+CONFLICT_FILE="$EXT_DIR/conflicts.conf"
+if [ -f "$CONFLICT_FILE" ] && [ -n "${SELECT_EXTENSIONS:-}" ]; then
+    # build selection map
+    read -ra SEL_ARR <<< "$SELECT_EXTENSIONS"
+    declare -A selmap
+    for s in "${SEL_ARR[@]}"; do selmap["$s"]=1; done
+
+    changed=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        [ -z "$line" ] && continue
+        [[ "$line" =~ ^# ]] && continue
+        # preferred:conf1 conf2
+        pref=${line%%:*}
+        rest=${line#*:}
+        for conf in $rest; do
+            if [ -n "${selmap[$pref]:-}" ] && [ -n "${selmap[$conf]:-}" ]; then
+                unset selmap["$conf"]
+                echo "Info: conflict detected: keeping $pref, removing $conf"
+                changed=1
+            fi
+        done
+    done < "$CONFLICT_FILE"
+
+    if [ $changed -eq 1 ]; then
+        newsel=()
+        for k in "${SEL_ARR[@]}"; do
+            if [ -n "${selmap[$k]:-}" ]; then
+                newsel+=("$k")
+            fi
+        done
+        # rebuild SELECT_EXTENSIONS preserving original order
+        SELECT_EXTENSIONS=$(printf "%s " "${newsel[@]}" | sed -e 's/ $//')
+    fi
+fi
 
 # Validate OS
 if [[ ! " ${AVAILABLE_OS[*]} " =~ " $OS " ]]; then
