@@ -10,7 +10,6 @@ MODES=("fpm" "cli")
 declare -A PHP_OS_MAP
 PHP_OS_MAP["5.5"]="alpine"
 PHP_OS_MAP["5.6"]="alpine stretch jessie"
-PHP_OS_MAP["8.5"]="alpine bookworm trixie"
 PHP_OS_MAP["7.0"]="alpine stretch jessie"
 PHP_OS_MAP["7.1"]="alpine stretch jessie"
 PHP_OS_MAP["7.2"]="alpine stretch buster"
@@ -255,7 +254,7 @@ else
     PHP_TAG="${PHP_VERSION}-${OS}"
 fi
 
-BUILD_CMD="$DOCKER_CMD build --build-arg PHP_TAG=\"$PHP_TAG\""
+BUILD_CMD="$DOCKER_CMD build --no-cache --progress=plain --build-arg PHP_TAG=\"$PHP_TAG\""
 if [ -n "$SELECT_EXTENSIONS" ]; then
     BUILD_CMD="$BUILD_CMD --build-arg SELECT_EXTENSIONS=\"$SELECT_EXTENSIONS\""
 fi

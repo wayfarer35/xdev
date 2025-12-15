@@ -15,6 +15,10 @@ RUN set -eux; \
     echo "[builder] Installing extensions: $SEL"; \
     # Let install-php-extensions handle required system packages when possible
     # Fail the build if extension installation fails
+    CFLAGS="${CFLAGS:-} -Wno-error" \
+    CXXFLAGS="${CXXFLAGS:-} -Wno-error" \
+    IPE_ICU_EN_ONLY=1 \
+    IPE_ASPELL_LANGUAGES='en' \
     install-php-extensions $SEL; \
     else \
         echo "[builder] No SELECT_EXTENSIONS provided; skipping extension build"; \
