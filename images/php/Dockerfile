@@ -3,8 +3,8 @@ ARG PHP_TAG=8.4-fpm-bookworm
 # Builder stage: compile/install extensions with build deps
 FROM php:${PHP_TAG} AS builder
 
-
-COPY --from=ghcr.io/mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+# Install dependencies for building extensions
+ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
 ARG SELECT_EXTENSIONS=""
 
