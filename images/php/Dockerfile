@@ -46,31 +46,34 @@ RUN set -eux; \
     if command -v ldd >/dev/null 2>&1; then \
         find /opt/php-extensions-available/lib -type f -name '*.so' -print0 | xargs -0 -n1 sh -c 'ldd "$0" 2>/dev/null | awk "/=>/ {print \$3} /ld-linux/ {print \$1}"' | sed '/^\s*$/d' | sort -u > /tmp/runtime-libs.list || true; \
         while IFS= read -r lib; do \
-            if [ -n "$lib" ] && [ -f "$lib" ]; then \
-                mkdir -p /opt/php-extensions-available/runtime/$(dirname "$lib"); \
-                cp -L "$lib" "/opt/php-extensions-available/runtime/$lib" 2>/dev/null || true; \
-            fi; \
-        done < /tmp/runtime-libs.list || true; \
-        rm -f /tmp/runtime-libs.list || true; \
-    fi
+                if [ -n "$lib" ] && [ -f "$lib" ]; then \
+                    mkdir -p /opt/php-extensions-available/runtime/$(dirname "$lib"); \
+                    cp -L "$lib" "/opt/php-extensions-available/runtime/$lib" 2>/dev/null || true; \
+                fi; \
+            done < /tmp/runtime-libs.list || true; \
+            rm -f /tmp/runtime-libs.list || true; \
+        fi; \
+        # create a tarball of collected runtime libs to preserve symlinks and paths
+        if [ -d /opt/php-extensions-available/runtime ]; then \
+            (cd /opt/php-extensions-available/runtime && tar -cpf /opt/php-extensions-available/runtime.tar .) || true; \
+        fi
 
 # Final runtime stage: smaller image
 FROM php:${PHP_TAG}
 
 # Copy prepared extensions and mapping from builder
 COPY --from=builder /opt/php-extensions-available /opt/php-extensions-available
+COPY --from=builder /opt/php-extensions-available/runtime.tar /opt/runtime.tar
 
-# Copy only runtime libraries discovered during build
+# Extract runtime libs preserving symlinks and original paths
 RUN set -e; \
-    if [ -d /opt/php-extensions-available/runtime ]; then \
-        echo "Copying runtime libs into /usr/local/lib"; \
-        # copy preserving structure where possible
-        cd /; \
-        find /opt/php-extensions-available/runtime -type f -print0 | xargs -0 -I{} sh -c 'd=$(dirname "{}" | sed "s@/opt/php-extensions-available/runtime@@"); mkdir -p "$d"; cp "{}" "$d"' || true; \
+    if [ -f /opt/runtime.tar ]; then \
+        echo "Extracting runtime libs from tar into filesystem"; \
+        tar -C / -xpf /opt/runtime.tar || true; \
+        rm -f /opt/runtime.tar || true; \
         if command -v ldconfig >/dev/null 2>&1; then \
             ldconfig || true; \
         else \
-            # ensure runtime path includes /usr/local/lib
             export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}; \
         fi; \
     fi
