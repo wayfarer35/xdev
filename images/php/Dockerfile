@@ -48,19 +48,7 @@ RUN set -eux; \
     fi; \
     # remove static libs, libtool archives and pkgconfig leftovers
     find /usr/local -type f \( -name '*.a' -o -name '*.la' \) -delete 2>/dev/null || true; \
-    rm -rf /usr/local/lib/pkgconfig /usr/local/share/doc /usr/local/share/man /usr/local/share/locale 2>/dev/null || true; \
-    # collect runtime shared libs referenced by extension .so files
-    mkdir -p /opt/php-extensions-available/runtime; \
-    if command -v ldd >/dev/null 2>&1; then \
-        find /opt/php-extensions-available/lib -type f -name '*.so' -print0 | xargs -0 -n1 sh -c 'ldd "$0" 2>/dev/null | awk "/=>/ {print \$3} /ld-linux/ {print \$1}"' | sed '/^\s*$/d' | sort -u > /tmp/runtime-libs.list || true; \
-        while IFS= read -r lib; do \
-            if [ -n "$lib" ] && [ -f "$lib" ]; then \
-                mkdir -p /opt/php-extensions-available/runtime/$(dirname "$lib"); \
-                cp -L "$lib" "/opt/php-extensions-available/runtime/$lib" 2>/dev/null || true; \
-            fi; \
-            done < /tmp/runtime-libs.list || true; \
-            rm -f /tmp/runtime-libs.list || true; \
-    fi;
+    rm -rf /usr/local/lib/pkgconfig /usr/local/share/doc /usr/local/share/man /usr/local/share/locale 2>/dev/null || true; 
 
 
 # Final runtime stage: smaller image
@@ -68,18 +56,44 @@ FROM php:${PHP_TAG}
 
 # Copy prepared extensions and mapping from builder
 COPY --from=builder /opt/php-extensions-available /opt/php-extensions-available
-COPY --from=builder /opt/php-extensions-available/runtime /opt/php-extensions-available/runtime
 
-# Merge collected runtime libs into /usr/local/lib (preserve symlinks) and clean up
+# Install collected extension .so files into the standard PHP extensions dir
 RUN set -e; \
-    if [ -d /opt/php-extensions-available/runtime ]; then \
-        echo "Merging collected runtime libs into /usr/local/lib"; \
-        cp -a /opt/php-extensions-available/runtime/. /usr/local/lib/ || true; \
-        rm -rf /opt/php-extensions-available/runtime || true; \
-        # remove redundant lib copies under /opt to reduce image size
-        # keep /opt/php-extensions-available/lib and ini files for runtime inspection
-        if command -v ldconfig >/dev/null 2>&1; then ldconfig || true; else export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}; fi; \
-    fi
+    if [ -d /opt/php-extensions-available/lib ]; then \
+        echo "Copying extension .so files into /usr/local/lib/php/extensions"; \
+        mkdir -p /usr/local/lib/php/extensions; \
+        cp -a /opt/php-extensions-available/lib/. /usr/local/lib/php/extensions/ || true; \
+    fi; \
+    # update dynamic linker cache
+    if command -v ldconfig >/dev/null 2>&1; then ldconfig || true; else export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}; fi; \
+    # runtime checks: list enabled modules and check shared lib dependencies for missing symbols
+    if command -v php >/dev/null 2>&1; then \
+        php -m > /opt/php-extensions-available/php-modules.txt || true; \
+    fi; \
+    echo "Checking .so dependencies (ldd) for missing libraries..."; \
+    > /opt/php-extensions-available/missing-libs.log; \
+    if command -v ldd >/dev/null 2>&1; then \
+        find /usr/local/lib/php/extensions -type f -name '*.so' -print0 | xargs -0 -n1 sh -c 'ldd "$0" 2>/dev/null | sed -n "s/.*=> \(.*not found\).*/\1/p" | sed -n \'/^/p\'' '{}' >> /opt/php-extensions-available/missing-libs.log || true; \
+        # more detailed scan: for each so, record missing libs per file
+        while IFS= read -r so; do \
+            miss=$(ldd "$so" 2>/dev/null | grep -E "not found" || true); \
+            if [ -n "${miss}" ]; then \
+                echo "--- $so ---" >> /opt/php-extensions-available/missing-libs.log; \
+                echo "$miss" >> /opt/php-extensions-available/missing-libs.log; \
+            fi; \
+        done < <(find /usr/local/lib/php/extensions -type f -name '*.so' -print) || true; \
+    fi; \
+    if [ -s /opt/php-extensions-available/missing-libs.log ]; then \
+        echo "Warning: missing shared libs detected; see /opt/php-extensions-available/missing-libs.log"; \
+        sed -n '1,200p' /opt/php-extensions-available/missing-libs.log || true; \
+    else \
+        echo "All extension shared libs appear satisfied."; \
+        rm -f /opt/php-extensions-available/missing-libs.log || true; \
+    fi; \
+    # cleanup: remove copied lib directory (we keep ini files and extensions.map for introspection)
+    rm -rf /opt/php-extensions-available/lib || true; \
+    # keep only ini files and extensions.map under /opt/php-extensions-available
+    find /opt/php-extensions-available -maxdepth 1 -type f ! -name '*.ini' ! -name 'extensions.map' -print0 | xargs -0 -r rm -f || true
 
 # Ensure entrypoint exists and is executable
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
