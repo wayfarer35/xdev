@@ -34,6 +34,7 @@ Required:
 Options (mutually exclusive installers):
     --extensions="a b c"   Explicit space- or comma-separated list of extensions to install (overrides other selection).
     --exclude="a b c"      Exclude these extensions from the default full raw list (space- or comma-separated).
+    --include="a b c"      Include these extensions even if they are in the default not-install list
 
 Other options:
     -d, --dry-run                 Print the docker build command and selected extensions, do not execute.
@@ -59,9 +60,11 @@ while [[ $# -gt 0 ]]; do
         -o)
             OS="$2"; shift 2;;
         --extensions=*)
-            SELECT_EXTENSIONS="${1#*=}"; shift;;
+            SELECT_EXTENSIONS="${1#*=}"; EXPLICIT_EXTENSIONS=1; shift;;
         --exclude=*)
             EXCLUDE_LIST="${1#*=}"; shift;;
+        --include=*)
+            INCLUDE_LIST="${1#*=}"; shift;;
         -d|--dry-run)
             DRY_RUN=1; shift;;
         --fail-on-generate)
@@ -216,6 +219,66 @@ if [ -z "${SELECT_EXTENSIONS:-}" ] && [ -f "$RAW_FILE" ]; then
         want=("${filtered[@]}")
     fi
     SELECT_EXTENSIONS=$(printf "%s\n" "${want[@]}" | awk '!seen[$0]++{print}' | tr '\n' ' ' | sed -e 's/^ \+//' -e 's/ \+$//')
+fi
+
+# Default-not-install list: moved to extensions/default-not-install.conf
+# Load list from file if present, otherwise fall back to a built-in list
+DEFAULT_NOT_INSTALL_FILE="$EXT_DIR/default-not-install.conf"
+DEFAULT_NOT_INSTALL=()
+if [ -f "$DEFAULT_NOT_INSTALL_FILE" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        # trim
+        line=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        [ -z "$line" ] && continue
+        [[ "$line" =~ ^# ]] && continue
+        # allow comma- or space-separated tokens on a line
+        for token in $(echo "$line" | tr ',' ' '); do
+            token=$(echo "$token" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            [ -n "$token" ] && DEFAULT_NOT_INSTALL+=("$token")
+        done
+    done < "$DEFAULT_NOT_INSTALL_FILE"
+else
+    DEFAULT_NOT_INSTALL=(opcache ddtrace oci8 pdo_oci parallel xdiff relay imagick vips zmq smbclient snappy snuffleupagus sourceguardian blackfire newrelic opentelemetry tideways)
+fi
+
+# If user did NOT pass explicit --extensions, remove default-not-install entries from
+# the computed SELECT_EXTENSIONS unless they were re-added via --include.
+if [ -z "${EXPLICIT_EXTENSIONS:-}" ] && [ -n "${SELECT_EXTENSIONS:-}" ]; then
+    # build maps
+    read -ra SEL_ARR_TMP <<< "$SELECT_EXTENSIONS"
+    declare -A selmap_tmp
+    for s in "${SEL_ARR_TMP[@]}"; do selmap_tmp["$s"]=1; done
+
+    declare -A include_map
+    if [ -n "${INCLUDE_LIST:-}" ]; then
+        includes=$(echo "$INCLUDE_LIST" | tr ',' ' ')
+        for i in $includes; do include_map["$i"]=1; done
+    fi
+
+    removed=()
+    for d in "${DEFAULT_NOT_INSTALL[@]}"; do
+        if [ -n "${selmap_tmp[$d]:-}" ] && [ -z "${include_map[$d]:-}" ]; then
+            unset selmap_tmp["$d"]
+            removed+=("$d")
+        fi
+    done
+
+    # rebuild SELECT_EXTENSIONS preserving original order and append includes
+    newsel=()
+    for k in "${SEL_ARR_TMP[@]}"; do
+        if [ -n "${selmap_tmp[$k]:-}" ]; then
+            newsel+=("$k")
+        fi
+    done
+    for inc in "${!include_map[@]}"; do
+        if [ -z "${selmap_tmp[$inc]:-}" ]; then
+            newsel+=("$inc")
+        fi
+    done
+    SELECT_EXTENSIONS=$(printf "%s " "${newsel[@]}" | sed -e 's/ $//')
+    if [ ${#removed[@]} -gt 0 ]; then
+        echo "Info: removed default-not-install extensions from selection: ${removed[*]}"
+    fi
 fi
 
 # Vlidate conflicts and remove conflicting extensions from SELECT_EXTENSIONS

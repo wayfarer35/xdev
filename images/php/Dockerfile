@@ -41,6 +41,14 @@ RUN set -eux; \
     # try to collect extension .so files from common dirs
     mkdir -p /opt/php-extensions-available/lib; \
     cp -a /usr/local/lib/php/extensions/. /opt/php-extensions-available/lib/ 2>/dev/null || true; \
+    # strip extension shared objects to reduce size and remove static/aux files
+    if command -v strip >/dev/null 2>&1; then \
+        find /usr/local/lib/php/extensions -type f -name '*.so' -print0 | xargs -0 -r strip --strip-unneeded || true; \
+        find /opt/php-extensions-available/lib -type f -name '*.so' -print0 | xargs -0 -r strip --strip-unneeded || true; \
+    fi; \
+    # remove static libs, libtool archives and pkgconfig leftovers
+    find /usr/local -type f \( -name '*.a' -o -name '*.la' \) -delete 2>/dev/null || true; \
+    rm -rf /usr/local/lib/pkgconfig /usr/local/share/doc /usr/local/share/man /usr/local/share/locale 2>/dev/null || true; \
     # collect runtime shared libs referenced by extension .so files
     mkdir -p /opt/php-extensions-available/runtime; \
     if command -v ldd >/dev/null 2>&1; then \
