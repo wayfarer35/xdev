@@ -10,6 +10,7 @@ ARG SELECT_EXTENSIONS=""
 
 # Prepare build deps and install extensions in single RUN to avoid leftover layers
 RUN set -eux; \
+    # install selected extensions
     if [ -n "$SELECT_EXTENSIONS" ]; then \
         SEL=$(echo "$SELECT_EXTENSIONS" | tr ',' ' '); \
         echo "[builder] Installing extensions: $SEL"; \
@@ -54,11 +55,28 @@ RUN set -eux; \
 # Final runtime stage: smaller image
 FROM php:${PHP_TAG}
 
+ARG COMPOSER_VERSION=""
+
 # Copy prepared extensions and mapping from builder
 COPY --from=builder /opt/php-extensions-available /opt/php-extensions-available
+# copy installer script from builder so final image keeps it
+COPY --from=builder /usr/local/bin/install-php-extensions /usr/local/bin/install-php-extensions
 
 # Install collected extension .so files into the standard PHP extensions dir
 RUN set -e; \
+    if [ -f /usr/local/bin/install-php-extensions ]; then \
+        chmod +x /usr/local/bin/install-php-extensions || true; \
+        if [ -n "${COMPOSER_VERSION:-}" ]; then \
+            echo "[final] Installing composer version ${COMPOSER_VERSION}"; \
+            install-php-extensions @composer:${COMPOSER_VERSION}; \
+        else \
+            echo "[final] Installing composer (latest)"; \
+            install-php-extensions @composer; \
+        fi; \
+    else \
+        echo "[final] install-php-extensions not present; skipping composer install"; \
+    fi; \
+    # copy extension .so files into PHP extensions dir
     if [ -d /opt/php-extensions-available/lib ]; then \
         echo "Copying extension .so files into /usr/local/lib/php/extensions"; \
         mkdir -p /usr/local/lib/php/extensions; \
