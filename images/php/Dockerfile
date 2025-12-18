@@ -73,15 +73,10 @@ RUN set -e; \
     echo "Checking .so dependencies (ldd) for missing libraries..."; \
     > /opt/php-extensions-available/missing-libs.log; \
     if command -v ldd >/dev/null 2>&1; then \
-        find /usr/local/lib/php/extensions -type f -name '*.so' -print0 | xargs -0 -n1 sh -c 'ldd "$0" 2>/dev/null | sed -n "s/.*=> \(.*not found\).*/\1/p" | sed -n \'/^/p\'' '{}' >> /opt/php-extensions-available/missing-libs.log || true; \
-        # more detailed scan: for each so, record missing libs per file
-        while IFS= read -r so; do \
-            miss=$(ldd "$so" 2>/dev/null | grep -E "not found" || true); \
-            if [ -n "${miss}" ]; then \
-                echo "--- $so ---" >> /opt/php-extensions-available/missing-libs.log; \
-                echo "$miss" >> /opt/php-extensions-available/missing-libs.log; \
-            fi; \
-        done < <(find /usr/local/lib/php/extensions -type f -name '*.so' -print) || true; \
+        # collect any missing library names from ldd (one invocation per .so)
+        find /usr/local/lib/php/extensions -type f -name '*.so' -print0 | xargs -0 -n1 -I{} sh -c 'ldd "$1" 2>/dev/null | sed -n "s/.*=> \(.*not found\).*/\1/p" | sed -n "/^/p"' _ '{}' >> /opt/php-extensions-available/missing-libs.log || true; \
+        # more detailed scan: for each so, record missing libs per file (avoid process-substitution)
+        find /usr/local/lib/php/extensions -type f -name '*.so' -print0 | xargs -0 -n1 -I{} sh -c 'miss=$(ldd "$1" 2>/dev/null | grep -E "not found" || true); if [ -n "$miss" ]; then echo "--- $1 ---" >> /opt/php-extensions-available/missing-libs.log; echo "$miss" >> /opt/php-extensions-available/missing-libs.log; fi' _ '{}' || true; \
     fi; \
     if [ -s /opt/php-extensions-available/missing-libs.log ]; then \
         echo "Warning: missing shared libs detected; see /opt/php-extensions-available/missing-libs.log"; \
