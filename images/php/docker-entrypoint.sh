@@ -60,30 +60,86 @@ enable_ext() {
 }
 
 # If ENABLE_EXTENSIONS not set, default to none (do nothing).
-if [ -z "$ENABLE_EXTENSIONS" ]; then
-  echo "[entrypoint] ENABLE_EXTENSIONS not set — no extensions will be enabled by default"
-else
-  case "$ENABLE_EXTENSIONS" in
-    all|ALL)
-      echo "[entrypoint] enabling all available extensions"
-      for f in "$AVAILABLE_DIR"/*.ini; do
-        [ -f "$f" ] || continue
-        name=$(basename "$f" .ini)
-        enable_ext "$name"
-      done
-      ;;
-    *)
-      # split by comma (POSIX-safe)
-      OLD_IFS=$IFS
-      IFS=','
-      for e in $ENABLE_EXTENSIONS; do
-        e_trim=$(echo "$e" | tr -d '\r' | sed -e 's/^\s*//' -e 's/\s*$//')
-        [ -z "$e_trim" ] && continue
-        enable_ext "$e_trim"
-      done
-      IFS=$OLD_IFS
+# If per-service env file provides extension flags (same-named vars like XDEBUG=1),
+# collect those enabled flags but only for allowed extensions listed in
+# /opt/php-extensions-available/extensions.allowed (if present).
+if [ -f "/opt/php-extensions-available/extensions.allowed" ]; then
+  allowed_file="/opt/php-extensions-available/extensions.allowed"
+  tmpf=$(mktemp)
+  # Only consider variables starting with EXTENSION_ to avoid collisions
+  env | while IFS='=' read -r name value; do
+    case "$name" in
+      EXTENSION_*)
+        case "$value" in
+          1|true|TRUE)
+            # strip prefix and normalize to lowercase
+            ext=$(echo "${name#EXTENSION_}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_]+/_/g')
+            if grep -x -F "$ext" "$allowed_file" >/dev/null 2>&1; then
+              echo "$ext" >> "$tmpf"
+            fi
+            ;;
+        esac
+        ;;
+    esac
+  done
+  # dedupe while preserving order
+  if [ -s "$tmpf" ]; then
+    extra_exts=$(awk '!seen[$0]++{print}' "$tmpf" | paste -sd, -)
+    rm -f "$tmpf"
+    if [ -n "$extra_exts" ]; then
+      if [ -n "$ENABLE_EXTENSIONS" ]; then
+        ENABLE_EXTENSIONS="${ENABLE_EXTENSIONS},${extra_exts}"
+      else
+        ENABLE_EXTENSIONS="${extra_exts}"
+      fi
+      export ENABLE_EXTENSIONS
+      echo "[entrypoint] computed ENABLE_EXTENSIONS from env flags: ${ENABLE_EXTENSIONS}"
+    fi
+  else
+    rm -f "$tmpf"
+  fi
+fi
+
+# New: do NOT use ENABLE_EXTENSIONS. Collect enabled extensions directly
+# from environment variables named EXTENSION_<NAME>=1 (or true/TRUE) and
+# enable those. If an allowed list exists, validate against it.
+enabled_tmp=$(mktemp)
+allowed_file="$AVAILABLE_DIR/extensions.allowed"
+env | while IFS='=' read -r name value; do
+  case "$name" in
+    EXTENSION_*)
+      case "$value" in
+        1|true|TRUE)
+          ext=$(echo "${name#EXTENSION_}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_]+/_/g')
+          if [ -f "$allowed_file" ]; then
+            if grep -x -F "$ext" "$allowed_file" >/dev/null 2>&1; then
+              echo "$ext" >> "$enabled_tmp"
+            fi
+          else
+            echo "$ext" >> "$enabled_tmp"
+          fi
+          ;;
+      esac
       ;;
   esac
+done
+
+# dedupe while preserving order and enable each
+if [ -s "$enabled_tmp" ]; then
+  enabled_exts=$(awk '!seen[$0]++{print}' "$enabled_tmp" | paste -sd, -)
+  rm -f "$enabled_tmp"
+  echo "[entrypoint] enabling extensions from EXTENSION_* env flags: ${enabled_exts}"
+  OLD_IFS=$IFS
+  IFS=','
+  for e in $enabled_exts; do
+    e_trim=$(echo "$e" | tr -d '\r' | sed -e 's/^\s*//' -e 's/\s*$//')
+    [ -z "$e_trim" ] && continue
+    enable_ext "$e_trim"
+  done
+  IFS=$OLD_IFS
+else
+  rm -f "$enabled_tmp"
+  echo "[entrypoint] no EXTENSION_* env flags found — no extensions will be enabled by default"
 fi
 
 # If no args provided, try php-fpm then php; otherwise execute whatever the user passed

@@ -1,1 +1,3 @@
 images/php/extensions/*.raw
+.env
+.*.env

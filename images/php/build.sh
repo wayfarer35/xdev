@@ -353,7 +353,7 @@ else
     PHP_TAG="${PHP_VERSION}-${OS}"
 fi
 
-BUILD_CMD="$DOCKER_CMD build --no-cache --progress=plain --build-arg PHP_TAG=\"$PHP_TAG\""
+BUILD_CMD="$DOCKER_CMD build --progress=plain --build-arg PHP_TAG=\"$PHP_TAG\""
 if [ -n "$SELECT_EXTENSIONS" ]; then
     BUILD_CMD="$BUILD_CMD --build-arg SELECT_EXTENSIONS=\"$SELECT_EXTENSIONS\""
 fi
