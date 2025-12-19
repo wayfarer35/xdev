@@ -38,7 +38,12 @@ enable_ext() {
   ext="$1"
   file="$(lookup_map "$ext")"
   if [ -n "$file" ] && [ -f "$AVAILABLE_DIR/$file" ]; then
-    ln -sf "$AVAILABLE_DIR/$file" "$PHP_CONF_DIR/$file"
+    dest="$PHP_CONF_DIR/$file"
+    # if already linked to the same source, skip
+    if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$AVAILABLE_DIR/$file")" ]; then
+      return 0
+    fi
+    ln -sf "$AVAILABLE_DIR/$file" "$dest"
     echo "[entrypoint] enabled extension: $ext -> $file"
     return 0
   fi
@@ -46,7 +51,11 @@ enable_ext() {
   for f in "$AVAILABLE_DIR"/*"$ext"*.ini "$AVAILABLE_DIR"/*"-$ext".ini "$AVAILABLE_DIR"/${ext}.ini; do
     [ -f "$f" ] || continue
     base=$(basename "$f")
-    ln -sf "$f" "$PHP_CONF_DIR/$base"
+    dest="$PHP_CONF_DIR/$base"
+    if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$f")" ]; then
+      return 0
+    fi
+    ln -sf "$f" "$dest"
     echo "[entrypoint] enabled extension (fallback): $ext -> $base"
     return 0
   done
@@ -56,7 +65,11 @@ enable_ext() {
     short=$(derive_shortname "$f")
     if [ "$short" = "$ext" ]; then
       base=$(basename "$f")
-      ln -sf "$f" "$PHP_CONF_DIR/$base"
+      dest="$PHP_CONF_DIR/$base"
+      if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$f")" ]; then
+        return 0
+      fi
+      ln -sf "$f" "$dest"
       echo "[entrypoint] enabled extension (derived): $ext -> $base"
       return 0
     fi
