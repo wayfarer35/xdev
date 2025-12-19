@@ -21,10 +21,16 @@ lookup_map() {
   fi
 }
 
-# Fallback: derive short name from ini file content
+# Fallback: derive short name from ini file content (portable, avoids GNU-only sed extensions)
 derive_shortname() {
   fpath="$1"
-  sed -n -e 's/^[[:space:]]*extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' -e 's/^[[:space:]]*zend_extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' "$fpath" | sed -E 's/.*/\L&/' | sed -E 's/.*\\/([^/]+)\\.so$/\1/' | sed -E 's/\\.so$//' | head -n1
+  # extract the first extension or zend_extension value from the ini file
+  val=$(sed -n -e 's/^[[:space:]]*extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' -e 's/^[[:space:]]*zend_extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' "$fpath" | head -n1 || true)
+  [ -z "$val" ] && return 1
+  # get basename and strip .so suffix, then lowercase in a portable way
+  base=$(basename "$val")
+  base=${base%.so}
+  echo "$base" | tr '[:upper:]' '[:lower:]'
 }
 
 # Helper: enable one extension by creating symlink (preserve original filename)
@@ -59,65 +65,17 @@ enable_ext() {
   return 1
 }
 
-# If ENABLE_EXTENSIONS not set, default to none (do nothing).
-# If per-service env file provides extension flags (same-named vars like XDEBUG=1),
-# collect those enabled flags but only for allowed extensions listed in
-# /opt/php-extensions-available/extensions.allowed (if present).
-if [ -f "/opt/php-extensions-available/extensions.allowed" ]; then
-  allowed_file="/opt/php-extensions-available/extensions.allowed"
-  tmpf=$(mktemp)
-  # Only consider variables starting with EXTENSION_ to avoid collisions
-  env | while IFS='=' read -r name value; do
-    case "$name" in
-      EXTENSION_*)
-        case "$value" in
-          1|true|TRUE)
-            # strip prefix and normalize to lowercase
-            ext=$(echo "${name#EXTENSION_}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_]+/_/g')
-            if grep -x -F "$ext" "$allowed_file" >/dev/null 2>&1; then
-              echo "$ext" >> "$tmpf"
-            fi
-            ;;
-        esac
-        ;;
-    esac
-  done
-  # dedupe while preserving order
-  if [ -s "$tmpf" ]; then
-    extra_exts=$(awk '!seen[$0]++{print}' "$tmpf" | paste -sd, -)
-    rm -f "$tmpf"
-    if [ -n "$extra_exts" ]; then
-      if [ -n "$ENABLE_EXTENSIONS" ]; then
-        ENABLE_EXTENSIONS="${ENABLE_EXTENSIONS},${extra_exts}"
-      else
-        ENABLE_EXTENSIONS="${extra_exts}"
-      fi
-      export ENABLE_EXTENSIONS
-      echo "[entrypoint] computed ENABLE_EXTENSIONS from env flags: ${ENABLE_EXTENSIONS}"
-    fi
-  else
-    rm -f "$tmpf"
-  fi
-fi
-
-# New: do NOT use ENABLE_EXTENSIONS. Collect enabled extensions directly
-# from environment variables named EXTENSION_<NAME>=1 (or true/TRUE) and
-# enable those. If an allowed list exists, validate against it.
+# Collect enabled extensions directly from environment variables named
+# EXTENSION_<NAME>=1 (or true/TRUE). If an allowed list exists, validate
+# against it. (Avoid duplicate ENABLE_EXTENSIONS handling.)
 enabled_tmp=$(mktemp)
-allowed_file="$AVAILABLE_DIR/extensions.allowed"
 env | while IFS='=' read -r name value; do
   case "$name" in
     EXTENSION_*)
       case "$value" in
         1|true|TRUE)
           ext=$(echo "${name#EXTENSION_}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_]+/_/g')
-          if [ -f "$allowed_file" ]; then
-            if grep -x -F "$ext" "$allowed_file" >/dev/null 2>&1; then
-              echo "$ext" >> "$enabled_tmp"
-            fi
-          else
-            echo "$ext" >> "$enabled_tmp"
-          fi
+          echo "$ext" >> "$enabled_tmp"
           ;;
       esac
       ;;
