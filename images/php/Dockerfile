@@ -42,6 +42,37 @@ RUN set -eux; \
     # try to collect extension .so files from common dirs
     mkdir -p /opt/php-extensions-available/lib; \
     cp -a /usr/local/lib/php/extensions/. /opt/php-extensions-available/lib/ 2>/dev/null || true; \
+    # collect shared library dependencies for extension .so files
+    mkdir -p /opt/php-extensions-available/libdeps; \
+    missing=; \
+    for so in $(find /opt/php-extensions-available/lib -type f -name '*.so' -print 2>/dev/null); do \
+        # run ldd and collect both resolved absolute paths and 'not found' names
+        ldd_output=$(ldd "$so" 2>/dev/null || true); \
+        for lib in $(echo "$ldd_output" | sed -n 's/.*=> \(\/[^ ]*\).*/\1/p' | sort -u); do \
+            if [ -n "$lib" ] && [ -f "$lib" ]; then \
+                destdir=/opt/php-extensions-available/libdeps$(dirname "$lib"); \
+                mkdir -p "$destdir" || true; \
+                cp -a "$lib" "$destdir/" || true; \
+                # if the copied file is a symlink, also copy the resolved target
+                if [ -L "$lib" ]; then \
+                    target=$(readlink -f "$lib" 2>/dev/null || true); \
+                    if [ -n "$target" ] && [ -f "$target" ]; then \
+                        targetdir=/opt/php-extensions-available/libdeps$(dirname "$target"); \
+                        mkdir -p "$targetdir" || true; \
+                        cp -a "$target" "$targetdir/" || true; \
+                    fi; \
+                fi; \
+            fi; \
+        done; \
+        # print 'not found' entries immediately to stderr and mark missing
+        nf=$(echo "$ldd_output" | sed -n "s/^[[:space:]]*\([^[:space:]]\+\).*not found$/\1/p" | tr '\n' ' '); \
+        if [ -n "$nf" ]; then echo "Missing shared libs for $so: $nf" >&2; missing=1; fi; \
+    done; \
+    # if any missing libs were detected during collection, fail the build with details
+    if [ -n "$missing" ]; then \
+        echo "Error: missing shared libs detected during build" >&2; \
+        exit 1; \
+    fi; \
     # strip extension shared objects to reduce size and remove static/aux files
     if command -v strip >/dev/null 2>&1; then \
         find /usr/local/lib/php/extensions -type f -name '*.so' -print0 | xargs -0 -r strip --strip-unneeded || true; \
@@ -81,6 +112,13 @@ RUN set -e; \
         echo "Copying extension .so files into /usr/local/lib/php/extensions"; \
         mkdir -p /usr/local/lib/php/extensions; \
         cp -a /opt/php-extensions-available/lib/. /usr/local/lib/php/extensions/ || true; \
+    fi; \
+    # copy collected shared library dependencies into runtime library dir
+    if [ -d /opt/php-extensions-available/libdeps ]; then \
+        echo "Restoring extension shared libs to original paths (from libdeps)..."; \
+        # libdeps contains files under paths matching their original locations (e.g. /usr/lib/...)
+        # copy them into root so they end up at the same absolute paths
+        cp -a /opt/php-extensions-available/libdeps/. / || true; \
     fi; \
     # update dynamic linker cache
     if command -v ldconfig >/dev/null 2>&1; then ldconfig || true; else export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}; fi; \
