@@ -36,45 +36,65 @@ derive_shortname() {
 # Helper: enable one extension by creating symlink (preserve original filename)
 enable_ext() {
   ext="$1"
+  attempts_tmp=$(mktemp)
   file="$(lookup_map "$ext")"
-  if [ -n "$file" ] && [ -f "$AVAILABLE_DIR/$file" ]; then
-    dest="$PHP_CONF_DIR/$file"
-    # if already linked to the same source, skip
-    if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$AVAILABLE_DIR/$file")" ]; then
+  if [ -n "$file" ]; then
+    printf '%s\n' "mapping:$file" >> "$attempts_tmp"
+    if [ -f "$AVAILABLE_DIR/$file" ]; then
+      dest="$PHP_CONF_DIR/$file"
+      # if already linked to the same source, skip
+      if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$AVAILABLE_DIR/$file")" ]; then
+        rm -f "$attempts_tmp"
+        return 0
+      fi
+      ln -sf "$AVAILABLE_DIR/$file" "$dest"
+      echo "[entrypoint] enabled extension: $ext -> $file"
+      rm -f "$attempts_tmp"
       return 0
+    else
+      # mapping existed but target file missing
+      printf '%s\n' "mapping-file-missing:$AVAILABLE_DIR/$file" >> "$attempts_tmp"
     fi
-    ln -sf "$AVAILABLE_DIR/$file" "$dest"
-    echo "[entrypoint] enabled extension: $ext -> $file"
-    return 0
   fi
   # fallback: try to find a matching file by pattern
   for f in "$AVAILABLE_DIR"/*"$ext"*.ini "$AVAILABLE_DIR"/*"-$ext".ini "$AVAILABLE_DIR"/${ext}.ini; do
-    [ -f "$f" ] || continue
+    [ -f "$f" ] || (printf '%s\n' "pattern-no-file:$f" >> "$attempts_tmp" && continue)
+    printf '%s\n' "pattern:$f" >> "$attempts_tmp"
     base=$(basename "$f")
     dest="$PHP_CONF_DIR/$base"
     if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$f")" ]; then
+      rm -f "$attempts_tmp"
       return 0
     fi
     ln -sf "$f" "$dest"
     echo "[entrypoint] enabled extension (fallback): $ext -> $base"
+    rm -f "$attempts_tmp"
     return 0
   done
   # try to match by derived shortname
   for f in "$AVAILABLE_DIR"/*.ini; do
     [ -f "$f" ] || continue
+    printf '%s\n' "scanning:$f" >> "$attempts_tmp"
     short=$(derive_shortname "$f")
     if [ "$short" = "$ext" ]; then
       base=$(basename "$f")
       dest="$PHP_CONF_DIR/$base"
       if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$f")" ]; then
+        rm -f "$attempts_tmp"
         return 0
       fi
       ln -sf "$f" "$dest"
       echo "[entrypoint] enabled extension (derived): $ext -> $base"
+      rm -f "$attempts_tmp"
       return 0
     fi
   done
   echo "[entrypoint] warning: extension ini not found for '$ext'" >&2
+  echo "[entrypoint][debug] attempted candidates:" >&2
+  sed -n '1,200p' "$attempts_tmp" >&2 || true
+  echo "[entrypoint][debug] available ini files (first 200):" >&2
+  ls -1 "$AVAILABLE_DIR"/*.ini 2>/dev/null | sed -n '1,200p' >&2 || true
+  rm -f "$attempts_tmp"
   return 1
 }
 
@@ -82,6 +102,7 @@ enable_ext() {
 # EXTENSION_<NAME>=1 (or true/TRUE). If an allowed list exists, validate
 # against it. (Avoid duplicate ENABLE_EXTENSIONS handling.)
 enabled_tmp=$(mktemp)
+trap 'rm -f "$enabled_tmp"' EXIT INT TERM
 env | while IFS='=' read -r name value; do
   case "$name" in
     EXTENSION_*)
@@ -105,7 +126,7 @@ if [ -s "$enabled_tmp" ]; then
   for e in $enabled_exts; do
     e_trim=$(echo "$e" | tr -d '\r' | sed -e 's/^\s*//' -e 's/\s*$//')
     [ -z "$e_trim" ] && continue
-    enable_ext "$e_trim"
+  enable_ext "$e_trim"
   done
   IFS=$OLD_IFS
 else
