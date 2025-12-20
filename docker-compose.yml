@@ -25,9 +25,6 @@ services:
       - ./config/php/8.4/php.ini:/usr/local/etc/php/php.ini:ro
       - ./config/php/8.4/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
       - ./logs/php/8.4:/var/log/php
-      - ./images/php/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
-      - ./data/php/8.4:/var/lib/php
-      - ./config/php/extensions.allowed:/opt/php-extensions-available/extensions.allowed:ro
     networks:
       - webnet
 
