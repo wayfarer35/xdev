@@ -107,7 +107,7 @@ ARG COMPOSER_VERSION=""
 # Copy prepared extensions and mapping from builder
 COPY --from=builder /opt/php-extensions-available /opt/php-extensions-available
 # Restore collected shared libs into final image root so linker can find them
-COPY --from=builder /opt/php-extensions-available/libdeps/. /
+COPY --from=builder /opt/php-extensions-available/libdeps /opt/php-extensions-available/libdeps
 # Copy MIBs collected in builder (if any)
 COPY --from=builder /opt/php-extensions-available/mibs /usr/share/snmp/mibs
 # copy installer script from builder so final image keeps it
@@ -133,7 +133,10 @@ RUN set -e; \
         mkdir -p /usr/local/lib/php/extensions; \
         cp -a /opt/php-extensions-available/lib/. /usr/local/lib/php/extensions/ || true; \
     fi; \
-    # libdeps already copied from builder via Dockerfile COPY --from=builder; ensure cache updated
+    # Restore collected libdeps from the safe opt location into system root
+    if [ -d /opt/php-extensions-available/libdeps ]; then \
+        cp -a /opt/php-extensions-available/libdeps/. / || true; \
+    fi; \
     # update dynamic linker cache
     if command -v ldconfig >/dev/null 2>&1; then ldconfig || true; else export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}; fi; \
     # runtime checks: list enabled modules and check shared lib dependencies for missing symbols
