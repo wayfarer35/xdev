@@ -1,10 +1,7 @@
 #!/bin/sh
 set -e
 
-# Prevent net-snmp from auto-loading MIBs (suppress "Cannot find module (...)" warnings)
-# Allow user to override by setting the MIBS env before container start.
-export MIBS=${MIBS:-}
-
+# (MIB handling moved to image build-time; do not change MIB env at runtime)
 # docker-entrypoint.sh (POSIX sh)
 # 启动时根据 ENABLE_EXTENSIONS 环境变量启用预安装的 PHP 扩展。
 # ENABLE_EXTENSIONS 可以是以逗号分隔的扩展名列表，或者设置为 "all" 来启用全部。

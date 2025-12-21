@@ -126,6 +126,22 @@ RUN set -e; \
     if command -v php >/dev/null 2>&1; then \
         php -m > /opt/php-extensions-available/php-modules.txt || true; \
     fi; \
+    # If snmp extension is present, try to install standard MIBs using
+    # whatever package manager is available in the base image.
+    if ls /usr/local/lib/php/extensions/*snmp*.so >/dev/null 2>&1 || grep -q '^snmp=' /opt/php-extensions-available/extensions.map 2>/dev/null; then \
+        echo "[final] snmp extension detected — attempting to install MIBs"; \
+        if command -v apt-get >/dev/null 2>&1; then \
+            apt-get update && apt-get install -y --no-install-recommends snmp snmp-mibs-downloader || true; \
+            download-mibs || true; \
+            rm -rf /var/lib/apt/lists/* || true; \
+        elif command -v apk >/dev/null 2>&1; then \
+            apk add --no-cache net-snmp net-snmp-tools || true; \
+        elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then \
+            if command -v dnf >/dev/null 2>&1; then dnf -y install net-snmp net-snmp-utils || true; else yum -y install net-snmp net-snmp-utils || true; fi; \
+        fi; \
+        mkdir -p /usr/share/snmp/mibs || true; \
+        touch /opt/php/mibs_installed || true; \
+    fi; \
     echo "Checking .so dependencies (ldd) for missing libraries..."; \
     > /opt/php-extensions-available/missing-libs.log; \
     if command -v ldd >/dev/null 2>&1; then \
@@ -148,12 +164,6 @@ RUN set -e; \
 
 # Ensure entrypoint exists and is executable
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \
-    # Disable automatic MIB loading to avoid "Cannot find module (...)" warnings
-    if [ -f /etc/snmp/snmp.conf ]; then \
-        sed -i 's/^[[:space:]]*mibs[[:space:]]*:.*$/# &/' /etc/snmp/snmp.conf || true; \
-    else \
-        echo '# mibs: disabled by image' > /etc/snmp/snmp.conf || true; \
-    fi
+RUN chmod +x /usr/local/bin/docker-entrypoint.share
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
