@@ -133,11 +133,15 @@ RUN set -e; \
         mkdir -p /usr/local/lib/php/extensions; \
         (cd /opt/php-extensions-available/lib && tar cf - .) | tar -C /usr/local/lib/php/extensions -xpf - || true; \
     fi; \
-    # Restore collected libdeps from the safe opt location into system root using tar
+    # Restore collected libdeps into /usr/local/lib (do NOT overwrite system /lib), and register with ldconfig
     if [ -d /opt/php-extensions-available/libdeps ]; then \
-        (cd /opt/php-extensions-available/libdeps && tar cf - .) | tar -C / -xpf - || true; \
+        echo "Installing collected libdeps into /usr/local/lib"; \
+        mkdir -p /usr/local/lib; \
+        find /opt/php-extensions-available/libdeps -type f -name '*.so*' -print0 | xargs -0 -r -I{} cp -a {} /usr/local/lib/ || true; \
+        # ensure dynamic linker will search /usr/local/lib
+        echo "/usr/local/lib" > /etc/ld.so.conf.d/php-extensions.conf || true; \
     fi; \
-    # update dynamic linker cache
+    # update dynamic linker cache (or fallback to LD_LIBRARY_PATH)
     if command -v ldconfig >/dev/null 2>&1; then ldconfig || true; else export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}; fi; \
     # runtime checks: list enabled modules and check shared lib dependencies for missing symbols
     if command -v php >/dev/null 2>&1; then \
