@@ -6,7 +6,7 @@ services:
       - "${NGINX_PORT:-80}:80"
     volumes:
       - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
-      - ${PROJECT_DIR:-./src}:/var/www/html:delegated
+      - ${PROJECT_DIR:-./src}:/www:delegated
       - ./logs/nginx:/var/log/nginx
       - ./data/nginx:/var/cache/nginx
     depends_on:
@@ -21,7 +21,7 @@ services:
     ports:
       - "${PHP_FPM_PORT:-9000}:9000"
     volumes:
-      - ${PROJECT_DIR:-./src}:/var/www/html:delegated
+      - ${PROJECT_DIR:-./src}:/www:delegated
       - ./config/php/8.4/php.ini:/usr/local/etc/php/php.ini:ro
       - ./config/php/8.4/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
       - ./logs/php/8.4:/var/log/php

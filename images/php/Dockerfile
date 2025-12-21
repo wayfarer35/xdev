@@ -170,6 +170,9 @@ RUN set -e; \
 
 # Ensure entrypoint exists and is executable
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && usermod -u 1000 www-data && groupmod -g 1000 www-data
+
+WORKDIR /www
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
