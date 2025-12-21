@@ -1,3 +1,4 @@
 images/php/extensions/*.raw
 .env
 .*.env
+docker-compose.override.yml

@@ -17,7 +17,7 @@ services:
   php:
     image: "${PHP_IMAGE}"
     container_name: xdev_php
-    env_file: ./.php-8.4.env
+    env_file: ./.php.env
     ports:
       - "${PHP_FPM_PORT:-9000}:9000"
     volumes:
