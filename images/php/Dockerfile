@@ -148,6 +148,12 @@ RUN set -e; \
 
 # Ensure entrypoint exists and is executable
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \
+    # Disable automatic MIB loading to avoid "Cannot find module (...)" warnings
+    if [ -f /etc/snmp/snmp.conf ]; then \
+        sed -i 's/^[[:space:]]*mibs[[:space:]]*:.*$/# &/' /etc/snmp/snmp.conf || true; \
+    else \
+        echo '# mibs: disabled by image' > /etc/snmp/snmp.conf || true; \
+    fi
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
