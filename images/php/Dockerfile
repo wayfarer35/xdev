@@ -16,7 +16,7 @@ RUN set -eux; \
         echo "[builder] Installing extensions: $SEL"; \
         CFLAGS="${CFLAGS:-} -Wno-error" \
         CXXFLAGS="${CXXFLAGS:-} -Wno-error" \
-        IPE_DEBUG=0 \
+        IPE_DEBUG=1 \
         IPE_ICU_EN_ONLY=1 \
         IPE_ASPELL_LANGUAGES='en' \
         install-php-extensions $SEL; \
