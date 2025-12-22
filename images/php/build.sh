@@ -11,7 +11,7 @@ declare -A PHP_OS_MAP
 PHP_OS_MAP["5.5"]="alpine"
 PHP_OS_MAP["5.6"]="alpine stretch jessie"
 PHP_OS_MAP["7.0"]="alpine stretch jessie"
-PHP_OS_MAP["7.1"]="alpine stretch jessie"
+PHP_OS_MAP["7.1"]="alpine stretch"
 PHP_OS_MAP["7.2"]="alpine stretch buster"
 PHP_OS_MAP["7.3"]="alpine stretch buster bullseye"
 PHP_OS_MAP["7.4"]="alpine buster bullseye"
@@ -32,6 +32,7 @@ Required:
     -o <os>             OS for the PHP image (depends on PHP version)
 
 Options (mutually exclusive installers):
+
     --extensions="a b c"   Explicit space- or comma-separated list of extensions to install (overrides other selection).
     --exclude="a b c"      Exclude these extensions from the default full raw list (space- or comma-separated).
     --include="a b c"      Include these extensions even if they are in the default not-install list
