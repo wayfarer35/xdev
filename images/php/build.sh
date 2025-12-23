@@ -8,9 +8,8 @@ MODES=("fpm" "cli")
 
 # PHP image official versions and their available OS
 declare -A PHP_OS_MAP
-PHP_OS_MAP["5.5"]="alpine"
-PHP_OS_MAP["5.6"]="alpine stretch jessie"
-PHP_OS_MAP["7.0"]="alpine stretch jessie"
+PHP_OS_MAP["5.6"]="alpine stretch"
+PHP_OS_MAP["7.0"]="alpine stretch"
 PHP_OS_MAP["7.1"]="alpine stretch"
 PHP_OS_MAP["7.2"]="alpine stretch buster"
 PHP_OS_MAP["7.3"]="alpine stretch buster bullseye"
@@ -224,20 +223,54 @@ fi
 
 # Default-not-install list: moved to extensions/default-not-install.conf
 # Load list from file if present, otherwise fall back to a built-in list
+# The file supports two formats:
+#   - legacy / global lines (no colon): one extension per line or comma/space separated
+#   - per-version lines: "7.4: ext1 ext2,ext3" (tokens after ':' are extensions for that PHP version)
 DEFAULT_NOT_INSTALL_FILE="$EXT_DIR/default-not-install.conf"
 DEFAULT_NOT_INSTALL=()
 if [ -f "$DEFAULT_NOT_INSTALL_FILE" ]; then
+    GLOBAL_DEFAULT_NOT_INSTALL=()
+    declare -A VERSION_DEFAULT_NOT_INSTALL
     while IFS= read -r line || [ -n "$line" ]; do
-        # trim
+        # trim leading/trailing space
         line=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
         [ -z "$line" ] && continue
         [[ "$line" =~ ^# ]] && continue
-        # allow comma- or space-separated tokens on a line
-        for token in $(echo "$line" | tr ',' ' '); do
-            token=$(echo "$token" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-            [ -n "$token" ] && DEFAULT_NOT_INSTALL+=("$token")
-        done
+        # parse tokens: first token is extension, remaining tokens (if any) are PHP versions
+        read -ra toks <<< "$line"
+        ext=${toks[0]}
+        if [ ${#toks[@]} -gt 1 ]; then
+            # version-specific: register ext under each listed version
+            for v in "${toks[@]:1}"; do
+                v=$(echo "$v" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+                [ -n "$v" ] && VERSION_DEFAULT_NOT_INSTALL["$v"]="${VERSION_DEFAULT_NOT_INSTALL["$v"]} $ext"
+            done
+        else
+            # global entry
+            GLOBAL_DEFAULT_NOT_INSTALL+=("$ext")
+        fi
     done < "$DEFAULT_NOT_INSTALL_FILE"
+
+    # Build effective DEFAULT_NOT_INSTALL: global + version-specific for current PHP_VERSION
+    DEFAULT_NOT_INSTALL=("")
+    if [ ${#GLOBAL_DEFAULT_NOT_INSTALL[@]} -gt 0 ]; then
+        for g in "${GLOBAL_DEFAULT_NOT_INSTALL[@]}"; do
+            [ -n "$g" ] && DEFAULT_NOT_INSTALL+=("$g")
+        done
+    fi
+    if [ -n "${VERSION_DEFAULT_NOTSTALL:-}" ]; then
+        : # noop (keeps shellcheck quiet if var referenced)
+    fi
+    if [ -n "${VERSION_DEFAULT_NOT_INSTALL[$PHP_VERSION]:-}" ]; then
+        read -ra vs <<< "${VERSION_DEFAULT_NOT_INSTALL[$PHP_VERSION]}"
+        for v in "${vs[@]}"; do
+            [ -n "$v" ] && DEFAULT_NOT_INSTALL+=("$v")
+        done
+    fi
+    # remove any leading empty element if present
+    if [ "${DEFAULT_NOT_INSTALL[0]}" = "" ]; then
+        DEFAULT_NOT_INSTALL=("${DEFAULT_NOT_INSTALL[@]:1}")
+    fi
 else
     DEFAULT_NOT_INSTALL=(opcache ddtrace oci8 pdo_oci parallel xdiff relay imagick vips zmq smbclient snappy snuffleupagus sourceguardian blackfire newrelic opentelemetry tideways)
 fi
